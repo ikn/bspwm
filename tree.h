@@ -63,6 +63,7 @@ node_t *find_by_id_in(node_t *r, uint32_t id);
 node_t *nearest_from_tree(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, node_select_t sel);
 node_t *nearest_from_history(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, node_select_t sel);
 node_t *nearest_from_distance(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, node_select_t sel);
+node_t *nearest_along_border(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, node_select_t sel);
 void get_opposite(direction_t src, direction_t *dst);
 unsigned int node_area(monitor_t *m, desktop_t *d, node_t *n);
 int tiled_count(node_t *n);

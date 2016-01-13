@@ -753,11 +753,12 @@ node_t *nearest_neighbor(monitor_t *m, desktop_t *d, node_t *n, direction_t dir,
 		nearest = nearest_from_history(m, d, n, dir, sel);
 	}
     if (nearest == NULL) {
-        if (focus_by_distance) {
-            nearest = nearest_from_distance(m, d, n, dir, sel);
-        } else {
-            nearest = nearest_from_tree(m, d, n, dir, sel);
-        }
+		nearest = nearest_along_border(m, d, n, dir, sel);
+//         if (focus_by_distance) {
+//             nearest = nearest_from_distance(m, d, n, dir, sel);
+//         } else {
+//             nearest = nearest_from_tree(m, d, n, dir, sel);
+//         }
     }
     return nearest;
 }
@@ -930,6 +931,122 @@ node_t *nearest_from_distance(monitor_t *m, desktop_t *d, node_t *n, direction_t
 			ds = ds2;
 			nearest = a;
 		}
+	}
+
+	return nearest;
+}
+
+void get_nw_border_point(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, xcb_point_t *pt)
+{
+	xcb_rectangle_t rect = get_rectangle(m, d, n);
+
+	switch (dir) {
+		case DIR_EAST: // ne
+			pt->x = rect.x + rect.width;
+			pt->y = rect.y;
+			break;
+		case DIR_SOUTH: // sw
+			pt->x = rect.x;
+			pt->y = rect.y + rect.height;
+			break;
+		case DIR_WEST: // nw
+		case DIR_NORTH: // nw
+			pt->x = rect.x;
+			pt->y = rect.y;
+			break;
+	}
+}
+
+int distance_along(direction_t dir, xcb_point_t pt1, xcb_point_t pt2)
+{
+	int ds;
+
+	switch (dir) {
+		case DIR_WEST:
+		case DIR_EAST:
+			ds = abs(pt2.x - pt1.x);
+			break;
+		case DIR_NORTH:
+		case DIR_SOUTH:
+			ds = abs(pt2.y - pt1.y);
+			break;
+	}
+
+	return ds;
+}
+
+int distance_across(direction_t dir, xcb_point_t pt1, xcb_point_t pt2)
+{
+	int ds;
+
+	switch (dir) {
+		case DIR_WEST:
+		case DIR_EAST:
+			ds = pt1.y - pt2.y;
+			break;
+		case DIR_NORTH:
+		case DIR_SOUTH:
+			ds = pt1.x - pt2.x;
+			break;
+	}
+
+	return ds < 0 ? INT_MAX + ds : ds;
+}
+
+node_t *nearest_along_border(monitor_t *m, desktop_t *d, node_t *n, direction_t dir, node_select_t sel)
+{
+	// NOTE: lacks the property that opposite moves reverse each other
+	// eg. left, right goes back to the original window
+	if (n == NULL) {
+		return NULL;
+	}
+
+	node_t *target = NULL;
+
+	if (n->client == NULL || IS_TILED(n->client)) {
+		target = find_fence(n, dir);
+		if (target == NULL) {
+			return NULL;
+		}
+		if (dir == DIR_NORTH || dir == DIR_WEST) {
+			target = target->first_child;
+		} else if (dir == DIR_SOUTH || dir == DIR_EAST) {
+			target = target->second_child;
+		}
+	} else {
+		target = d->root;
+	}
+
+	node_t *nearest = NULL;
+	direction_t dir2;
+	xcb_point_t pt;
+	xcb_point_t pt2;
+	get_nw_border_point(m, d, n, dir, &pt);
+	get_opposite(dir, &dir2);
+	int ds_pll = INT_MAX;
+	int ds_perp = INT_MAX;
+	coordinates_t ref = {m, d, n};
+
+	for (node_t *a = first_extrema(target); a != NULL; a = next_leaf(a, target)) {
+		coordinates_t loc = {m, d, a};
+		if (a == n ||
+		    !node_matches(&loc, &ref, sel) ||
+		    (n->client != NULL && (IS_TILED(a->client) != IS_TILED(n->client))) ||
+		    (IS_TILED(a->client) && !is_adjacent(n, a, dir))) {
+			continue;
+		}
+
+		get_nw_border_point(m, d, a, dir2, &pt2);
+		int ds2_pll = distance_along(dir, pt, pt2);
+		int ds2_perp = distance_across(dir, pt, pt2);
+		warn("points: %d %d, %d %d\n", pt.x, pt.y, pt2.x, pt2.y);
+		warn("distance: %d/%d (min %d/%d)\n", ds2_pll, ds2_perp, ds_pll, ds_perp);
+		if (ds2_pll < ds_pll || (ds2_pll == ds_pll && ds2_perp < ds_perp)) {
+			ds_pll = ds2_pll;
+			ds_perp = ds2_perp;
+			nearest = a;
+		}
+
 	}
 
 	return nearest;
